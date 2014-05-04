@@ -3,15 +3,16 @@
 // @namespace   bullshit.petardo.dk
 // @include     http://politiken.dk/*
 // @version     0.1
-// @grant       GM_addStyle
+// @grant       none
 // @require     http://ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js
-// @require     http://dev.petardo.dk/flagger/mockup/lib.js
-// @require     http://dev.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-core.js
-// @require     http://dev.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-cssclassapplier.js
-// @require     http://dev.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-textrange.js
-// @require     http://dev.petardo.dk/flagger/deps/jquery-ui-1.10.4/js/jquery-ui-1.10.4.js
+// @require     http://biazed.petardo.dk/flagger/mockup/lib.js
+// @require     http://biazed.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-core.js
+// @require     http://biazed.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-cssclassapplier.js
+// @require     http://biazed.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-textrange.js
+// @require     http://biazed.petardo.dk/flagger/deps/jquery-ui-1.10.4/js/jquery-ui-1.10.4.js
 // ==/UserScript==
 
+// For jQuery
 this.$ = this.jQuery = jQuery.noConflict(true);
 
 function loadResource(url) {
@@ -26,17 +27,44 @@ function loadResource(url) {
     ref.setAttribute("type","text/javascript");
     ref.setAttribute("src", url);
   }
-  document.getElementsByTagName("head")[0].appendChild(ref)
+  document.getElementsByTagName("head")[0].appendChild(ref);
 }
 
 loadResource("http://dev.petardo.dk/flagger/mockup/mockup.css");
 loadResource("http://dev.petardo.dk/flagger/deps/jquery-ui-1.10.4/css/ui-lightness/jquery-ui-1.10.4.css");
 
-var buttons = $($.parseHTML('<div id="buttons"> <h3>Bullshit selection</h3> Make a selection in the document on the left and hit Bullshit to mark it as bullshit: '+
- ' <br> <input title="BULLSHIT!" type="button" disabled id="bsButton" value="BULLSHIT!" unselectable="on" class="unselectable">'+
- '<br> <input type="button" id="allSelection" value="Sel"> </div>'));
+var buttons = $($.parseHTML(
+  '<div id="buttons"> <h3>Bullshit selection</h3> Make a selection in the '+
+    'document on the left and hit Bullshit to mark it as bullshit: <br> <input'+
+    ' title="BULLSHIT!" type="button" disabled id="bsButton" value="BULLSHIT!"'+
+    ' unselectable="on" class="unselectable"><br> <input type="button" '+
+    'id="allSelection" value="Sel"> </div>'));
 
 var bsApplier;
+
+var bsButton;
+var bsClick = function(event) {
+  var sel = rangy.getSelection();
+  var hash = crc32(sel.anchorNode.parentNode.innerHTML);
+  toggleBsApplier();
+  $.ajax({
+    url: 'http://petardo.dk:8080/insert?col=bs',
+    type: 'POST',
+    dataType: 'JSON',
+    data: "doc=" + JSON.stringify({
+      "bs": sel.text(),
+      "xpath": getElementXPath(sel.anchorNode.parentNode).replace(/\/span$/, ''),
+      "reason": $('.bscomment').text(),
+      "reference": $('.reflink').text(),
+      "url": document.documentURI,
+      "parHash": hash
+    })
+  }).done(function(data) {
+    unsafeWindow.console.log("bullshit submitted, got this in return: " + data);
+  });
+  return false;
+
+};
 
 function toggleBsInputFields() {
   $('#extrabuttons').toggle();
@@ -55,33 +83,6 @@ function getSelectedNodes() {
     return selectedNodes;
 }
 
-var btnClick = function(event) {
-      var sel = rangy.getSelection();
-      var hash = crc32(sel.anchorNode.parentNode.innerHTML);
-      toggleBsApplier();
-      $.ajax({
-        url: 'http://petardo.dk:8080/insert?col=bs',
-        type: 'POST',
-        dataType: 'JSON',
-        data: "doc=" + JSON.stringify({
-          "bs": sel.text(),
-          "xpath": getElementXPath(sel.anchorNode.parentNode).replace(/\/span$/, ''),
-          "reason": $('.bscomment').text(),
-          "reference": $('.reflink').text(),
-          "url": document.documentURI,
-          "parHash": hash
-        })
-      })
-        .done(function(data) {
-          unsafeWindow.console.log("bullshit submitted, got this in return: " + data);
-        });
-      return false;
-
-    };
-//array for paragraph objects
-var par =[];
-
-
 // bsSelection get the current selection, the DOM path of the object
 // and anything else we need in order to later find the bullshit.
 function bsSelection() {
@@ -92,7 +93,7 @@ function bsSelection() {
 
 function getBullshit() {
   return $.ajax({
-    url: 'http://petardo.dk:8080/query?col=bs',
+    url: 'http://biazed.petardo.dk:8080/query?col=bs',
     type: 'POST',
     async: false,
     dataType: 'JSON',
@@ -109,11 +110,8 @@ function applyBullshit(bs) {
     bs.responseJSON.map(function(x) {
       var res = document.evaluate(x.xpath, document, null, XPathResult.ANY_TYPE, null );
       var obj = res.iterateNext();
-      // unsafeWindow.console.log(obj);
-      // unsafeWindow.console.log(x.parHash, crc32(obj.innerHTML));
       if (x.parHash == crc32(obj.innerHTML)) {
-        // unsafeWindow.console.log(x.reason);
-        obj.innerHTML = '<span class="bs" title="BULLSHIT! Here\'s why:' + x.reason +'">' + obj.innerHTML + '</span>';
+        obj.innerHTML = '<span class="bs" title="BULLSHIT! Here\'s why:' + x.comment +'">' + obj.innerHTML + '</span>';
       }
     });
     // enable tooltips
@@ -126,9 +124,11 @@ function applyBullshit(bs) {
 
   // Enable buttons
   $('body').prepend(buttons);
-
+  bsButton = $('#bsButton').get(0);
   // Get bullshit
   var bs = getBullshit();
+  // Smear it all over
+  // FIXME: Should we fling it instead?
   applyBullshit(bs);
 
   // ClassApplier is the name for the module in 1.3. CssClassApplier is for 1.2 and earlier.
@@ -158,11 +158,7 @@ function applyBullshit(bs) {
 
     });
 
-    var bsButton = $('#bsButton').get(0);
-    bsButton = bsButton.wrappedJSObject;
-
-    bsButton.addEventListener('click', btnClick, false);
-
+    bsButton.addEventListener('click', bsClick, false);
     bsButton.disabled = false;
   }
 
