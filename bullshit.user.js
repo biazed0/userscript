@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name        bullshit
-// @namespace   bullshit.petardo.dk
+// @namespace   biazed.petardo.dk
 // @include     http://politiken.dk/*
-// @version     0.1
+// @version     0.1.5
 // @grant       none
-// @require     http://ajax.googleapis.com/ajax/libs/jquery/2.1.0/jquery.min.js
+// @require     http://biazed.petardo.dk/flagger/deps/jquery-2.1.1.js
 // @require     http://biazed.petardo.dk/flagger/mockup/lib.js
 // @require     http://biazed.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-core.js
 // @require     http://biazed.petardo.dk/flagger/deps/rangy-1.3alpha.804/rangy-cssclassapplier.js
@@ -12,8 +12,10 @@
 // @require     http://biazed.petardo.dk/flagger/deps/jquery-ui-1.10.4/js/jquery-ui-1.10.4.js
 // ==/UserScript==
 
-// For jQuery
-this.$ = this.jQuery = jQuery.noConflict(true);
+log = unsafeWindow ? unsafeWindow.console.log : console.log;
+
+// For jQuery -- relinquish the var '$'
+jQuery.noConflict();
 
 function loadResource(url) {
   var ref;
@@ -30,10 +32,10 @@ function loadResource(url) {
   document.getElementsByTagName("head")[0].appendChild(ref);
 }
 
-loadResource("http://dev.petardo.dk/flagger/mockup/mockup.css");
-loadResource("http://dev.petardo.dk/flagger/deps/jquery-ui-1.10.4/css/ui-lightness/jquery-ui-1.10.4.css");
+loadResource("http://biazed.petardo.dk/flagger/mockup/mockup.css");
+loadResource("http://biazed.petardo.dk/flagger/deps/jquery-ui-1.10.4/css/ui-lightness/jquery-ui-1.10.4.css");
 
-var buttons = $($.parseHTML(
+var buttons = jQuery(jQuery.parseHTML(
   '<div id="buttons"> <h3>Bullshit selection</h3> Make a selection in the '+
     'document on the left and hit Bullshit to mark it as bullshit: <br> <input'+
     ' title="BULLSHIT!" type="button" disabled id="bsButton" value="BULLSHIT!"'+
@@ -45,29 +47,31 @@ var bsApplier;
 var bsButton;
 var bsClick = function(event) {
   var sel = rangy.getSelection();
+  if (sel.text().length === 0) {
+    return false;
+  }
   var hash = crc32(sel.anchorNode.parentNode.innerHTML);
   toggleBsApplier();
-  $.ajax({
-    url: 'http://petardo.dk:8080/insert?col=bs',
+  jQuery.ajax({
+    url: 'http://biazed.petardo.dk:8080/insert?col=bs',
     type: 'POST',
     dataType: 'JSON',
     data: "doc=" + JSON.stringify({
       "bs": sel.text(),
       "xpath": getElementXPath(sel.anchorNode.parentNode).replace(/\/span$/, ''),
-      "reason": $('.bscomment').text(),
-      "reference": $('.reflink').text(),
+      "comment": jQuery('.bscomment').text(),
+      "reference": jQuery('.reflink').text(),
       "url": document.documentURI,
       "parHash": hash
     })
   }).done(function(data) {
-    unsafeWindow.console.log("bullshit submitted, got this in return: " + data);
+    log("bullshit submitted, got this in return: " + data);
   });
-  return false;
-
+  return true;
 };
 
 function toggleBsInputFields() {
-  $('#extrabuttons').toggle();
+  jQuery('#extrabuttons').toggle();
 }
 
 function toggleBsApplier() {
@@ -92,7 +96,7 @@ function bsSelection() {
 }
 
 function getBullshit() {
-  return $.ajax({
+  return jQuery.ajax({
     url: 'http://biazed.petardo.dk:8080/query?col=bs',
     type: 'POST',
     async: false,
@@ -115,7 +119,7 @@ function applyBullshit(bs) {
       }
     });
     // enable tooltips
-    $('span.bs').tooltip();
+    jQuery('span.bs').tooltip();
   }
 }
 
@@ -123,8 +127,9 @@ function applyBullshit(bs) {
   rangy.init();
 
   // Enable buttons
-  $('body').prepend(buttons);
-  bsButton = $('#bsButton').get(0);
+  jQuery('body').prepend(buttons);
+  bsButton = jQuery('#bsButton').get(0);
+
   // Get bullshit
   var bs = getBullshit();
   // Smear it all over
@@ -134,19 +139,13 @@ function applyBullshit(bs) {
   // ClassApplier is the name for the module in 1.3. CssClassApplier is for 1.2 and earlier.
   var classApplierModule = rangy.modules.ClassApplier || rangy.modules.CssClassApplier;
 
-  var sel;
   // Next line is pure paranoia: it will only return false if the browser has no support for ranges,
   // selections or TextRanges. Even IE 5 would pass this test.
   if (rangy.supported && classApplierModule && classApplierModule.supported) {
-    // Hide extra buttons
-    var extrabuttons = $('#extrabuttons');
-    extrabuttons.toggle();
-
-    $('*').not('#extrabuttons').mouseup(function() {
+    jQuery('*').mouseup(function() {
       var selection = rangy.getSelection();
-      unsafeWindow.console.log(selection.text());
       if (selection.text().length > 0) {
-        extrabuttons.show();
+        log(selection.text());
       }
     });
 
@@ -162,10 +161,4 @@ function applyBullshit(bs) {
     bsButton.disabled = false;
   }
 
-  $('#allSelection').on('click', function(){
-    $( '.bsSelection' ).each(function( index ) {
-      unsafeWindow.console.log( index + ": " + $( this ).text() );
-    });
-
-  });
 })();
